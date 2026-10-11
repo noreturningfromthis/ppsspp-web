@@ -1,15 +1,19 @@
-name: Build WASM release and publish Pages
+name: Build WASM release and optionally publish Pages
 
 on:
   push:
     branches:
       - wasm
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the validated build to GitHub Pages
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -27,20 +31,19 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 1
-
-      - name: Checkout PPSSPP WASM
-        uses: actions/checkout@v6
-        with:
-          repository: root-hunter/ppsspp-wasm
-          ref: wasm
-          path: ppsspp-wasm-src
           submodules: recursive
-          fetch-depth: 1
 
       - name: Configure Git safe directory
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git config --global --add safe.directory "$GITHUB_WORKSPACE/ppsspp-wasm-src"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/deps/ppsspp-wasm"
+
+      - name: Verify pinned PPSSPP-WASM revision
+        run: |
+          expected="$(git ls-tree HEAD deps/ppsspp-wasm | awk '{print $3}')"
+          actual="$(git -C deps/ppsspp-wasm rev-parse HEAD)"
+          test -n "$expected" && test "$actual" = "$expected"
+          echo "Building pinned PPSSPP-WASM revision $actual"
 
       - name: Install build tools
         run: |
@@ -48,18 +51,16 @@ jobs:
           apt-get install -y --no-install-recommends ninja-build ca-certificates
 
       - name: Build release
-        run: make wasm-release WASM_ROOT=ppsspp-wasm-src CMAKE=/usr/bin/cmake WASM_JOBS="-j$(nproc)"
+        run: make wasm-release CMAKE=/usr/bin/cmake WASM_JOBS="-j$(nproc)"
 
       - name: Install Angular dependencies
         run: npm --prefix wasm-page ci
 
-      - name: Build static Pages artifact
-        run: make app-build-pages WASM_ROOT=ppsspp-wasm-src
-
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v6
+      - name: Build and verify static Pages package
+        run: make app-build-pages
 
       - name: Upload Pages artifact
+        if: ${{ github.event_name == 'push' || inputs.deploy }}
         uses: actions/upload-pages-artifact@v5
         with:
           path: wasm-page/dist/ppsspp-web
@@ -67,12 +68,20 @@ jobs:
   deploy:
     name: Deploy GitHub Pages
     needs: build
+    if: ${{ needs.build.result == 'success' && (github.event_name == 'push' || inputs.deploy) }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v5

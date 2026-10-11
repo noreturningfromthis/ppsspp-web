@@ -1490,3 +1490,293 @@ body.drive-connected .drive-sync-btn { display: inline-flex !important; }
 }
 .opfs-file-actions button:hover { background: var(--surface3); border-color: var(--border2); }
 .opfs-file-actions button.del:hover { background: rgba(255,95,95,.12); color: var(--danger); border-color: rgba(255,95,95,.3); }
+
+/* Game-first shell: PPSSPP remains the runtime behind the game canvas. */
+.game-first-shell {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
+}
+.game-first-shell > header,
+.game-first-shell > .body-main > aside {
+  display: none !important;
+}
+body.player-saves-open .game-first-shell > .body-main > aside {
+  position: fixed;
+  z-index: 12;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(430px, calc(100vw - 24px));
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 14px;
+  background: #0f1318;
+  box-shadow: 0 24px 90px rgba(0, 0, 0, .65);
+  overflow: hidden;
+}
+.player-saves-header { display: none; }
+body.player-saves-open .player-saves-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 62px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.player-saves-header div { display: grid; gap: 2px; }
+.player-saves-header span { color: var(--muted); font-size: 11px; }
+.player-saves-header button { min-height: 34px; }
+body.player-saves-open .game-first-shell > .body-main > aside > .status-bar,
+body.player-saves-open .game-first-shell > .body-main > aside > .panel-tab-select-wrap,
+body.player-saves-open .game-first-shell > .body-main > aside > .tabs { display: none !important; }
+body.player-saves-open #tabSaves { display: flex !important; min-height: 0; overflow: hidden; }
+body.player-saves-open #savesPanel { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
+.game-first-shell > .body-main {
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.game-first-shell .stage {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  background: #000;
+}
+.game-first-shell canvas {
+  width: min(100vw, 177.7778dvh);
+  height: min(100dvh, 56.25vw);
+  max-width: 100vw;
+  max-height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  object-fit: contain;
+}
+.game-first-shell #idleOverlay,
+.game-first-shell #fpsBadge,
+.game-first-shell #stageMini {
+  display: none !important;
+}
+.game-launch-overlay {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  background:
+    radial-gradient(ellipse at 50% 25%, rgba(0, 212, 170, .12), transparent 42%),
+    #080b0e;
+}
+body.emulator-started .game-launch-overlay { display: none; }
+.game-launch-card {
+  width: min(100%, 470px);
+  padding: clamp(24px, 5vw, 40px);
+  border: 1px solid #27343d;
+  border-radius: 14px;
+  background: rgba(15, 20, 24, .94);
+  box-shadow: 0 24px 90px rgba(0, 0, 0, .48);
+  text-align: left;
+}
+.game-launch-kicker {
+  margin-bottom: 14px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.game-launch-card h1 {
+  margin: 0 0 14px;
+  color: #f1f6f8;
+  font-size: clamp(26px, 5vw, 40px);
+  line-height: 1.08;
+  letter-spacing: -.035em;
+}
+.game-launch-card p {
+  margin: 0 0 18px;
+  color: #aab7bf;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.game-launch-card button.primary {
+  min-height: 44px;
+  padding: 0 18px;
+  font-size: 14px;
+}
+.game-launch-continue {
+  min-height: 44px;
+  margin-left: 8px;
+  padding: 0 16px;
+}
+.game-launch-card .game-launch-help {
+  margin: 13px 0 0;
+  color: #778791;
+  font-size: 12px;
+}
+.game-launch-card .game-launch-error {
+  display: none;
+  margin: 14px 0 0;
+  color: #ff9292;
+  font-size: 13px;
+}
+.game-launch-card .game-launch-reload {
+  min-height: 40px;
+  margin-top: 12px;
+}
+.game-hud {
+  position: absolute;
+  z-index: 3;
+  top: max(10px, env(safe-area-inset-top));
+  left: max(10px, env(safe-area-inset-left));
+  right: max(10px, env(safe-area-inset-right));
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 5px 7px 5px 13px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 9px;
+  background: rgba(7, 10, 12, .74);
+  color: #e7eef2;
+  font-size: 12px;
+  backdrop-filter: blur(10px);
+}
+body.emulator-started .game-hud { display: flex; }
+.game-hud-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.game-hud-hint { color: #a4b2ba; }
+.game-hud button {
+  min-height: 32px;
+  border-color: rgba(255, 255, 255, .18);
+  background: rgba(255, 255, 255, .09);
+}
+.game-pause-overlay {
+  position: absolute;
+  z-index: 8;
+  inset: 0;
+  display: none;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, .62);
+  backdrop-filter: blur(7px);
+}
+.game-pause-overlay.open { display: grid; }
+.game-pause-card {
+  width: min(100%, 390px);
+  padding: 28px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 14px;
+  background: rgba(12, 17, 20, .97);
+  color: #edf3f6;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .5);
+}
+.game-pause-card h2 { margin: 0 0 10px; font-size: 28px; }
+.game-pause-card p { color: #aab7bf; font-size: 14px; line-height: 1.55; }
+.game-pause-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.game-pause-actions button { min-height: 46px; padding: 0 16px; }
+.game-pause-card .game-launch-help { margin: 16px 0 0; }
+.game-touch-controls { display: none; }
+.game-touch-controls button {
+  display: grid;
+  place-items: center;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, .46);
+  border-radius: 50%;
+  background: rgba(15, 22, 27, .55);
+  color: #fff;
+  font-weight: 700;
+  font-size: 21px;
+  text-shadow: 0 1px 3px #000;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, .24);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.game-touch-controls button:active,
+.game-touch-controls button.pressed { background: rgba(0, 212, 170, .72); transform: scale(.96); }
+.game-touch-controls .touch-dpad {
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  display: grid;
+  grid-template: repeat(3, clamp(44px, 12vw, 60px)) / repeat(3, clamp(44px, 12vw, 60px));
+  gap: 3px;
+  pointer-events: auto;
+}
+.touch-dpad button { border-radius: 15px !important; background: rgba(12, 18, 22, .62) !important; font-size: 17px !important; }
+.game-touch-controls .touch-up { grid-area: 1 / 2; }
+.game-touch-controls .touch-left { grid-area: 2 / 1; }
+.game-touch-controls .touch-dpad-center { grid-area: 2 / 2; border-radius: 12px; background: rgba(12, 18, 22, .44); }
+.game-touch-controls .touch-right { grid-area: 2 / 3; }
+.game-touch-controls .touch-down { grid-area: 3 / 2; }
+.game-touch-controls .touch-face-buttons {
+  position: absolute;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  display: grid;
+  grid-template: repeat(3, clamp(44px, 12vw, 60px)) / repeat(3, clamp(44px, 12vw, 60px));
+  gap: 3px;
+  pointer-events: auto;
+}
+.game-touch-controls .touch-triangle { grid-area: 1 / 2; }
+.game-touch-controls .touch-square { grid-area: 2 / 1; }
+.game-touch-controls .touch-circle { grid-area: 2 / 3; }
+.game-touch-controls .touch-cross { grid-area: 3 / 2; }
+.game-touch-controls .touch-shoulders {
+  position: absolute;
+  top: max(54px, calc(env(safe-area-inset-top) + 48px));
+  pointer-events: auto;
+}
+.game-touch-controls .touch-shoulders button { min-width: 50px; min-height: 42px; border-radius: 13px; font-size: 14px; }
+.touch-shoulders-left { left: max(14px, env(safe-area-inset-left)); }
+.touch-shoulders-right { right: max(14px, env(safe-area-inset-right)); }
+.game-touch-controls .touch-system-buttons {
+  position: absolute;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  display: flex;
+  gap: 8px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+.game-touch-controls .touch-system-buttons button { min-width: 58px; min-height: 36px; border-radius: 12px; font-size: 9px; }
+.game-first-shell .stage:fullscreen,
+.game-first-shell .stage:-webkit-full-screen {
+  width: 100vw !important;
+  height: 100dvh !important;
+}
+@media (max-width: 700px) {
+  .game-hud { top: max(6px, env(safe-area-inset-top)); left: max(6px, env(safe-area-inset-left)); right: max(6px, env(safe-area-inset-right)); min-height: 38px; }
+  .game-hud-hint { display: none; }
+  .game-hud button { min-height: 34px; padding: 0 9px; }
+  .game-launch-card { padding: 24px; }
+  .game-launch-continue { display: block; width: 100%; margin: 10px 0 0; overflow-wrap: anywhere; }
+}
+@media (pointer: coarse), (max-width: 760px) {
+  body.emulator-started .game-touch-controls { position: absolute; z-index: 4; inset: 0; display: block; pointer-events: none; }
+  body.game-paused .game-touch-controls { visibility: hidden; }
+}

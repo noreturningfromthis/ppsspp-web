@@ -52,6 +52,7 @@ app-build-pages: wasm-root-check
 	@test -f "$(PAGES_WASM_DIR)/PPSSPPSDL.js" || (echo "Missing $(PAGES_WASM_DIR)/PPSSPPSDL.js. Run: make wasm-release" >&2; exit 1)
 	@test -f "$(PAGES_WASM_DIR)/PPSSPPSDL.wasm" || (echo "Missing $(PAGES_WASM_DIR)/PPSSPPSDL.wasm. Run: make wasm-release" >&2; exit 1)
 	@test -f "$(PAGES_WASM_DIR)/PPSSPPSDL.data" || (echo "Missing $(PAGES_WASM_DIR)/PPSSPPSDL.data. Run: make wasm-release" >&2; exit 1)
+	@test -f "$(WASM_ROOT)/LICENSE.TXT" || (echo "Missing PPSSPP license notice: $(WASM_ROOT)/LICENSE.TXT" >&2; exit 1)
 	npm --prefix $(APP_DIR) run build:pages
 	rm -rf "$(APP_DIST)/build-wasm" "$(APP_DIST)/build-wasm-release" "$(APP_DIST)/assets"
 	mkdir -p "$(APP_DIST)/build-wasm"
@@ -59,6 +60,10 @@ app-build-pages: wasm-root-check
 	cp -aL "$(PAGES_WASM_DIR)/PPSSPPSDL.wasm" "$(APP_DIST)/build-wasm/"
 	cp -aL "$(PAGES_WASM_DIR)/PPSSPPSDL.data" "$(APP_DIST)/build-wasm/"
 	@if [ -d "$(WASM_ROOT)/assets" ]; then mkdir -p "$(APP_DIST)/build-wasm/assets"; cp -aL "$(WASM_ROOT)/assets/." "$(APP_DIST)/build-wasm/assets/"; find "$(WASM_ROOT)/assets" -type f ! -path '*/.*' | sed 's#^$(WASM_ROOT)/assets/##' | LC_ALL=C sort > "$(APP_DIST)/assets-manifest.txt"; fi
+	mkdir -p "$(APP_DIST)/licenses"
+	cp "$(WASM_ROOT)/LICENSE.TXT" "$(APP_DIST)/licenses/PPSSPP-LICENSE.TXT"
+	@wasm_commit=$$(git -C "$(WASM_ROOT)" rev-parse HEAD); \
+	  printf 'PPSSPP-WASM source revision: %s\nSource: https://github.com/root-hunter/ppsspp-wasm/tree/%s\n' "$$wasm_commit" "$$wasm_commit" > "$(APP_DIST)/licenses/PPSSPP-SOURCE.txt"
 	@touch "$(APP_DIST)/.nojekyll"
 	@test -f "$(APP_DIST)/index.html"
 	@grep -q '<base href="./">' "$(APP_DIST)/index.html"
@@ -68,9 +73,18 @@ app-build-pages: wasm-root-check
 	@test -f "$(APP_DIST)/build-wasm/PPSSPPSDL.js"
 	@test -f "$(APP_DIST)/build-wasm/PPSSPPSDL.wasm"
 	@test -f "$(APP_DIST)/build-wasm/PPSSPPSDL.data"
+	@test -f "$(APP_DIST)/licenses/PPSSPP-LICENSE.TXT"
+	@test -f "$(APP_DIST)/licenses/PPSSPP-SOURCE.txt"
+	@if find "$(APP_DIST)" -type f \( -iname '*.iso' -o -iname '*.cso' -o -iname '*.chd' -o -iname '*.pbp' -o -iname '*.7z' -o -iname '*.zip' -o -iname '*.rar' \) -print -quit | grep -q .; then echo "Refusing to publish: game image/archive found in $(APP_DIST)" >&2; exit 1; fi
+	@oversized=$$(find "$(APP_DIST)" -type f -size +25M -print -quit); \
+	  if [ -n "$$oversized" ]; then \
+	    bytes=$$(stat -c '%s' "$$oversized"); \
+	    echo "Pages asset exceeds Cloudflare's 25 MiB per-file limit: $$oversized ($$bytes bytes)" >&2; \
+	    exit 1; \
+	  fi
 	@test ! -e "$(APP_DIST)/build-wasm/CMakeCache.txt"
 	@test ! -d "$(APP_DIST)/build-wasm/lib"
-	@echo "GitHub Pages static bundle ready in $(APP_DIST) using $(PAGES_WASM_DIR)"
+	@echo "Static Pages bundle ready in $(APP_DIST) using $(PAGES_WASM_DIR)"
 
 pages: wasm-release app-build-pages
 

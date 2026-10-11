@@ -11,8 +11,8 @@ const MANIFEST         = "assets-manifest.txt";
 const USE_PRELOADED_ASSETS = true;
 const VIRTUAL_ASSETS   = "/emsdk/upstream/emscripten/cache/sysroot/share/ppsspp/assets";
 const VIRTUAL_GAME_DIR = "/games";
-const GAME_FILE_ACCEPT = ".iso,.cso,.chd,.pbp,.elf,.prx";
-const GAME_FILE_EXT_RE = /\.(iso|cso|chd|pbp|elf|prx)$/i;
+const GAME_FILE_ACCEPT = ".iso,.cso,.chd,.pbp";
+const GAME_FILE_EXT_RE = /\.(iso|cso|chd|pbp)$/i;
 
 // Persistence: PPSSPP writes config+saves to $HOME/.config/ppsspp/ on Linux/Emscripten
 const PERSIST_ROOTS       = ["/home/web_user/.config/ppsspp", "/root/.config/ppsspp"];
@@ -43,7 +43,7 @@ const WEB_STABILITY_CONFIG = [
 ];
 const MOBILE_TOUCH_CONFIG = [
   ["General", "UIScaleFactor", "3"],
-  ["Control", "ShowTouchControls", "True"],
+  ["Control", "ShowTouchControls", "False"],
   ["Control", "TouchButtonStyle", "1"],
   ["Control", "TouchButtonOpacity", "78"],
   ["Control", "TouchButtonHideSeconds", "0"],
@@ -314,6 +314,12 @@ const progressBar     = byId("progressBar");
 const idleOverlay     = byId("idleOverlay");
 const idleSubtitle    = byId("idleSubtitle");
 const idleStartBtn    = byId("idleStartBtn");
+const gameLaunchOverlay = byId("gameLaunchOverlay");
+const gameLaunchError = byId("gameLaunchError");
+const gameLaunchReload = byId("gameLaunchReload");
+const gameLaunchContinue = byId("gameLaunchContinue");
+const gamePauseOverlay = byId("gamePauseOverlay");
+const gameTouchControls = byId("gameTouchControls");
 const fpsBadge        = byId("fpsBadge");
 const gpuBadge        = byId("gpuBadge");
 const gamepadBadge    = byId("gamepadBadge");
@@ -362,6 +368,8 @@ let selectedGame = null;
 let selectedStoredGame = null;
 let started      = false;
 let runtimeReady = false;
+let gamePaused = false;
+const lastGameStorageKey = "chinatown-wars-last-game";
 const trackedAudioContexts = [];
 const audioDebug = {
   callbacks: 0, nonsilent: 0, peak: 0, rate: 0, deviceStarted: false,
@@ -377,6 +385,13 @@ function updateIdleOverlay() {
   if (idleSubtitle) idleSubtitle.textContent = text;
 }
 updateIdleOverlay();
+
+function showGameLaunchError(message) {
+  if (!gameLaunchError) return;
+  gameLaunchError.textContent = message || "";
+  gameLaunchError.style.display = message ? "block" : "none";
+  if (gameLaunchReload) gameLaunchReload.style.display = message ? "inline-flex" : "none";
+}
 
 function setStartButtonMode(mode) {
   if (!startBtn) return;
@@ -4291,20 +4306,11 @@ async function preloadGame(FS) {
   const sourceName = selectedGame ? selectedGame.name : selectedStoredGame;
   const safe = sourceName.replace(/[^a-zA-Z0-9._-]/g, "_");
   const path = VIRTUAL_GAME_DIR + "/" + safe;
-  setStatus("Fast loading game: " + sourceName, "run");
-  showLoading("Fast loading game: " + sourceName);
+  setStatus("Loading game: " + sourceName, "run");
+  showLoading("Loading game: " + sourceName);
 
-  if (selectedGame) {
-    const fastPath = mountGameFileFast(FS, selectedGame, safe, "selected file");
-    if (fastPath) {
-      persistSelectedGameInBackground(selectedGame);
-      return fastPath;
-    }
-  } else if (selectedStoredGame) {
-    const storedFile = await opfsGetGameFile(selectedStoredGame);
-    const fastPath = mountGameFileFast(FS, storedFile, safe, "OPFS");
-    if (fastPath) return fastPath;
-  }
+  // The bundled WebAssembly build aborts when mounting a user File through
+  // WORKERFS. Use MEMFS directly so the failed mount cannot poison runtime.
 
   setStatus("Loading game into memory: " + sourceName, "run");
   showLoading("Loading game: " + sourceName);
@@ -4383,7 +4389,14 @@ async function start() {
   let preAudioCtx = null;
   try {
     preAudioCtx = new AudioContext({ latencyHint: "interactive" });
-    await preAudioCtx.resume();
+    if (navigator.userActivation?.isActive) {
+      await preAudioCtx.resume();
+    } else {
+      // Browser autoplay policies may keep audio suspended until the first
+      // interaction. Do not block a stored-game auto-launch on that promise.
+      preAudioCtx.resume().catch(e => log("AUDIO: waiting for user interaction: " + (e?.message || e), "warn"));
+      log("AUDIO: automatic launch has no user gesture; sound may unlock on first input.", "warn");
+    }
     log("AUDIO: AudioContext pre-initialized for SDL (state=" + preAudioCtx.state + ", sr=" + preAudioCtx.sampleRate + ").", "ok");
     // Install ScriptProcessor→AudioWorklet polyfill for Chrome 126+ compat.
     // This MUST run inside the user gesture (button click) so the worklet
@@ -4479,6 +4492,8 @@ async function start() {
       setStatus("Abort: " + reason, "err");
       runtimeReady = false;
       hideLoading();
+      document.body.classList.remove("emulator-started");
+      showGameLaunchError("This game file could not be started. Choose a supported PSP ISO, CSO, CHD, or PBP image, then reload before trying again.");
     }
   };
 
@@ -4579,6 +4594,7 @@ function installTouchMouseShim() {
 on(fileInput, "change", () => {
   selectedGame = fileInput?.files?.[0] || null;
   selectedStoredGame = null;
+  showGameLaunchError("");
   if (fileLabel) fileLabel.title = selectedGame ? selectedGame.name : "Open game";
   // Update the visible text node inside the label
   const textNode = fileLabel?.firstChild;
@@ -4586,7 +4602,218 @@ on(fileInput, "change", () => {
     textNode.textContent = (selectedGame ? "\uD83D\uDCC2 " + selectedGame.name : "\uD83D\uDCC2 Open Game") + " ";
   updateIdleOverlay();
   setStatus(selectedGame ? "Selected: " + selectedGame.name : "Ready. Open a game file or use Library.");
+  if (!selectedGame) return;
+  if (!GAME_FILE_EXT_RE.test(selectedGame.name)) {
+    showGameLaunchError("Unsupported file type. Choose an extracted PSP ISO, CSO, CHD, or PBP image; 7z archives must be extracted first.");
+    return;
+  }
+  localStorage.setItem(lastGameStorageKey, selectedGame.name);
+  start();
 });
+
+on("gameLaunchChoose", "click", () => fileInput?.click());
+on(gameLaunchReload, "click", () => window.location.reload());
+on("gameHudFullscreen", "click", () => fullscreenBtn?.click());
+on("gameHudPause", "click", () => setGamePaused(!gamePaused));
+on("gamePauseResume", "click", () => setGamePaused(false));
+on("gamePauseSaves", "click", () => {
+  if (!runtimeReady) return;
+  activatePanelTab("saves");
+  document.body.classList.add("player-saves-open");
+  refreshSavesTab();
+});
+on("playerSavesClose", "click", () => {
+  document.body.classList.remove("player-saves-open");
+  byId("gamePauseSaves")?.focus();
+});
+on("gamePauseMenu", "click", () => {
+  setGamePaused(false);
+  tapGameKey("Space");
+  canvas?.focus();
+});
+
+const gameKeyDetails = {
+  ArrowUp: { code: "ArrowUp", keyCode: 38 }, ArrowDown: { code: "ArrowDown", keyCode: 40 },
+  ArrowLeft: { code: "ArrowLeft", keyCode: 37 }, ArrowRight: { code: "ArrowRight", keyCode: 39 },
+  i: { code: "KeyI", keyCode: 73 }, j: { code: "KeyJ", keyCode: 74 },
+  k: { code: "KeyK", keyCode: 75 }, l: { code: "KeyL", keyCode: 76 },
+  z: { code: "KeyZ", keyCode: 90 }, x: { code: "KeyX", keyCode: 88 },
+  a: { code: "KeyA", keyCode: 65 }, s: { code: "KeyS", keyCode: 83 },
+  q: { code: "KeyQ", keyCode: 81 }, w: { code: "KeyW", keyCode: 87 },
+  v: { code: "KeyV", keyCode: 86 }, Space: { code: "Space", keyCode: 32 },
+  F8: { code: "F8", keyCode: 119 },
+};
+const activeGameKeyCounts = new Map();
+const touchKeyPointers = new Map();
+function emitGameKey(type, key) {
+  const details = gameKeyDetails[key];
+  if (!canvas || !details) return;
+  const keyValue = key === "Space" ? " " : key;
+  canvas.dispatchEvent(new KeyboardEvent(type, {
+    key: keyValue, code: details.code, keyCode: details.keyCode, which: details.keyCode,
+    bubbles: true, cancelable: true,
+  }));
+}
+function holdGameKey(key) {
+  const count = activeGameKeyCounts.get(key) || 0;
+  activeGameKeyCounts.set(key, count + 1);
+  if (!count) emitGameKey("keydown", key);
+}
+function releaseGameKey(key) {
+  const count = activeGameKeyCounts.get(key) || 0;
+  if (count <= 1) {
+    activeGameKeyCounts.delete(key);
+    emitGameKey("keyup", key);
+  } else activeGameKeyCounts.set(key, count - 1);
+}
+function tapGameKey(key) { holdGameKey(key); releaseGameKey(key); }
+function setGamePaused(paused) {
+  if (!runtimeReady || gamePaused === paused) return;
+  gamePaused = paused;
+  if (paused) releasePhysicalGameKeys();
+  tapGameKey("F8");
+  gamePauseOverlay?.classList.toggle("open", paused);
+  gamePauseOverlay?.setAttribute("aria-hidden", String(!paused));
+  document.body.classList.toggle("game-paused", paused);
+  if (paused) byId("gamePauseResume")?.focus();
+  else canvas?.focus();
+}
+document.addEventListener("keydown", event => {
+  if (!runtimeReady || event.key !== "Escape" || event.repeat) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (document.body.classList.contains("player-saves-open")) {
+    document.body.classList.remove("player-saves-open");
+    byId("gamePauseSaves")?.focus();
+    return;
+  }
+  setGamePaused(!gamePaused);
+}, true);
+// Keep PPSSPP's default key bindings internal, but present a familiar PC layout:
+// WASD/arrows move, I/J/K/U map to the PSP face-button diamond, Q/E are L/R,
+// Enter is Start, and either Shift key is Select. Synthetic touch events are
+// intentionally unaffected because this handler only receives trusted input.
+const physicalGameKeys = new Map([
+  // PPSSPP's stock keyboard profile maps I/J/K/L to its analog stick axes.
+  // Chinatown Wars uses the PSP analog stick for character movement, so send
+  // WASD through those axis bindings instead of mapping WASD to the D-pad.
+  ["KeyW", "i"], ["KeyA", "j"], ["KeyS", "k"], ["KeyD", "l"],
+  ["ArrowUp", "ArrowUp"], ["ArrowLeft", "ArrowLeft"], ["ArrowDown", "ArrowDown"], ["ArrowRight", "ArrowRight"],
+  ["KeyI", "s"], ["KeyJ", "z"], ["KeyK", "x"], ["KeyU", "a"],
+  ["KeyQ", "q"], ["KeyE", "w"], ["Enter", "Space"], ["ShiftLeft", "v"], ["ShiftRight", "v"],
+]);
+const physicalKeysHeld = new Map();
+function releasePhysicalGameKeys() {
+  for (const mapped of physicalKeysHeld.values()) releaseGameKey(mapped);
+  physicalKeysHeld.clear();
+}
+function isTypingTarget(target) {
+  return target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+}
+document.addEventListener("keydown", event => {
+  if (!runtimeReady || gamePaused || !event.isTrusted || event.repeat || isTypingTarget(event.target)) return;
+  const mapped = physicalGameKeys.get(event.code);
+  if (!mapped) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  physicalKeysHeld.set(event.code, mapped);
+  holdGameKey(mapped);
+}, true);
+document.addEventListener("keyup", event => {
+  const mapped = physicalKeysHeld.get(event.code);
+  if (!mapped) return;
+  physicalKeysHeld.delete(event.code);
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  releaseGameKey(mapped);
+}, true);
+window.addEventListener("blur", releasePhysicalGameKeys);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) releasePhysicalGameKeys();
+});
+on(gameTouchControls, "pointerdown", event => {
+  const button = event.target.closest("[data-game-key]");
+  if (!button || !runtimeReady || gamePaused) return;
+  event.preventDefault();
+  const key = button.dataset.gameKey;
+  touchKeyPointers.set(event.pointerId, { button, key });
+  button.classList.add("pressed");
+  try { button.setPointerCapture(event.pointerId); } catch (_) {}
+  canvas?.focus({ preventScroll: true });
+  holdGameKey(key);
+}, { passive: false });
+for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
+  on(gameTouchControls, eventName, event => {
+    const active = touchKeyPointers.get(event.pointerId);
+    if (!active) return;
+    touchKeyPointers.delete(event.pointerId);
+    active.button.classList.remove("pressed");
+    releaseGameKey(active.key);
+  });
+}
+
+on(gameLaunchContinue, "click", async () => {
+  const name = gameLaunchContinue.dataset.game;
+  if (name) {
+    localStorage.setItem(lastGameStorageKey, name);
+    selectedStoredGame = name;
+    selectedGame = null;
+    start();
+  }
+});
+
+async function refreshGameContinueButton() {
+  if (!gameLaunchContinue) return;
+  try {
+    const games = await opfsWalk(OPFS_GAMES_DIR, "", false);
+    const lastName = localStorage.getItem(lastGameStorageKey);
+    const storedName = lastName?.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const choice = games.find(game => game.path === storedName) || games[0];
+    if (!choice || !GAME_FILE_EXT_RE.test(choice.path)) return;
+    gameLaunchContinue.dataset.game = choice.path;
+    gameLaunchContinue.textContent = "Continue last game";
+    gameLaunchContinue.hidden = false;
+  } catch (error) {
+    log("Local continue option unavailable: " + (error?.message || error), "warn");
+  }
+}
+
+async function autoStartPreviouslySelectedGame() {
+  if (!gameLaunchContinue) return;
+  try {
+    const games = await opfsWalk(OPFS_GAMES_DIR, "", false);
+    const lastName = localStorage.getItem(lastGameStorageKey);
+    const storedName = lastName?.replace(/[^a-zA-Z0-9._-]/g, "_");
+    log("Auto-start lookup: " + games.length + " local game file(s); remembered file=" + (lastName || "none"), "info");
+    const candidates = games.filter(game => GAME_FILE_EXT_RE.test(game.path));
+    let gameToStart = candidates.find(game => game.path === storedName) || null;
+    const isChinatownWars = async game => {
+      const metadata = await readGameMetadata(game.path);
+      return /chinatown[\s._-]*wars/i.test((metadata.title || "") + " " + game.path);
+    };
+    if (gameToStart && !(await isChinatownWars(gameToStart))) gameToStart = null;
+    if (!gameToStart) {
+      for (const game of candidates) {
+        if (await isChinatownWars(game)) {
+          gameToStart = game;
+          break;
+        }
+      }
+    }
+    if (gameToStart) {
+      localStorage.setItem(lastGameStorageKey, gameToStart.path);
+      selectedStoredGame = gameToStart.path;
+      selectedGame = null;
+      log("Auto-starting locally stored Chinatown Wars: " + gameToStart.path, "ok");
+      start();
+      return;
+    }
+  } catch (error) {
+    log("Could not check for a previously selected local game: " + (error?.message || error), "warn");
+  }
+  // No previously selected local game: retain the one-time file selection flow.
+  refreshGameContinueButton();
+}
 
 on(startBtn, "click", () => {
   start();
@@ -4912,9 +5139,18 @@ on(fullscreenBtn, "click", async () => {
 /* ── Init ───────────────────────────────────────────────────────── */
 log("Page loaded. crossOriginIsolated=" + window.crossOriginIsolated, window.crossOriginIsolated ? "ok" : "warn");
 log("Build: " + BUILD_STAMP, "dim");
+const brandedPageTitle = "Grand Theft Auto: Chinatown Wars";
+const titleObserver = new MutationObserver(() => {
+  if (document.title !== brandedPageTitle) document.title = brandedPageTitle;
+});
+if (document.querySelector("title")) {
+  titleObserver.observe(document.querySelector("title"), { childList: true, subtree: true, characterData: true });
+}
+document.title = brandedPageTitle;
 probeWebGLFeatures();
 updateInfoPanel();
 refreshLibrary();
+autoStartPreviouslySelectedGame();
 updateStorageInfo();    // populate OPFS tab with stats on load
 refreshSavesTab();      // populate Saves tab from OPFS on load (no FS needed)
 

@@ -1,7 +1,7 @@
 {
-  "name": "PPSSPP Web",
-  "short_name": "PPSSPP",
-  "description": "PPSSPP – PSP emulator running in your browser via WebAssembly",
+  "name": "Grand Theft Auto: Chinatown Wars",
+  "short_name": "Chinatown Wars",
+  "description": "Play your locally supplied PSP copy of Grand Theft Auto: Chinatown Wars in your browser.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -41,14 +41,14 @@
       "sizes": "1280x800",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "PPSSPP Web – desktop view"
+      "label": "Chinatown Wars – desktop view"
     },
     {
       "src": "icons/screenshot-mobile.png",
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "PPSSPP Web – mobile view"
+      "label": "Chinatown Wars – mobile view"
     }
   ],
   "prefer_related_applications": false
