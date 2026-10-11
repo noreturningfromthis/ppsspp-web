@@ -1,22 +1,16 @@
-name: Build WASM release and optionally publish Pages
+name: Validate and package PPSSPP Web
 
 on:
   push:
     branches:
-      - wasm
+      - ci-validation
   workflow_dispatch:
-    inputs:
-      deploy:
-        description: Deploy the validated build to GitHub Pages
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: pages
+  group: wasm-validation-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -48,7 +42,13 @@ jobs:
       - name: Install build tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ninja-build ca-certificates
+          apt-get install -y --no-install-recommends cmake ninja-build ca-certificates git make python3
+          cmake --version
+          ninja --version
+          make --version
+          python3 --version
+          node --version
+          npm --version
 
       - name: Build release
         run: make wasm-release CMAKE=/usr/bin/cmake WASM_JOBS="-j$(nproc)"
@@ -59,29 +59,10 @@ jobs:
       - name: Build and verify static Pages package
         run: make app-build-pages
 
-      - name: Upload Pages artifact
-        if: ${{ github.event_name == 'push' || inputs.deploy }}
-        uses: actions/upload-pages-artifact@v5
+      - name: Save packaged site for later manual deployment
+        uses: actions/upload-artifact@v4
         with:
+          name: cloudflare-pages-site-${{ github.sha }}
           path: wasm-page/dist/ppsspp-web
-
-  deploy:
-    name: Deploy GitHub Pages
-    needs: build
-    if: ${{ needs.build.result == 'success' && (github.event_name == 'push' || inputs.deploy) }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    steps:
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v6
-
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v5
+          if-no-files-found: error
+          retention-days: 7
